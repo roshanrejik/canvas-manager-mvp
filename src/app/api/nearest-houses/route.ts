@@ -116,24 +116,21 @@ export async function POST(request: Request) {
         }
 
         // Logic for neighbor generation
-        // We want ±2, ±4, ±6 existing in the foundHouses list
+        // Instead of fixed offsets (which fail on irregular streets), 
+        // we return the closest surrounding neighbors found in the live record set.
         const baseNum = parseInt(houseNumber, 10);
-        const offsets = [-6, -4, -2, 2, 4, 6];
 
-        const neighbors: string[] = [];
-
-        offsets.forEach(offset => {
-            const candidate = baseNum + offset;
-            if (foundHouses.includes(candidate)) {
-                neighbors.push(`${candidate} ${street}`);
-            }
-        });
+        // Filter out the target itself and sort by distance to target
+        const neighbors = foundHouses
+            .filter(n => n !== baseNum)
+            .sort((a, b) => Math.abs(a - baseNum) - Math.abs(b - baseNum))
+            .slice(0, 20) // Return top 20 closest neighbors
+            .map(n => `${n} ${street}`);
 
         return NextResponse.json({
             validatedAddress: `${houseNumber} ${street}`, // Best effort from input
-            zipPlus4: targetGeo, // Return the Geography string (Zip+4-House) or just Zip+4?
-            // page.tsx treats geography as the unique ID. We can use it.
-            neighbors: neighbors.sort((a, b) => parseInt(a) - parseInt(b))
+            zipPlus4: targetGeo,
+            neighbors: neighbors
         });
 
     } catch (error: unknown) {
