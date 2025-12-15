@@ -37,11 +37,8 @@ export async function POST(request: Request) {
             street: street,
             hno: houseNumber,
             records: "50", // Fetch enough to find neighbors
-            format: "json" // Note: even with format=json, this endpoint often returns XML-in-JSON or pure XML structure depending on version. 
-            // The existing app parses XML from it. Let's inspect the response in page.tsx behavior.
-            // Actually page.tsx uses response.text() and regex, implying it returns XML.
-            // The previous endpoint was 'rest/Service.svc/get/zip'. 
-            // We will follow the pattern in page.tsx: fetch text and regex parse.
+            format: "json",
+            cols: "Name,Phone,Email" // Request explicit details
         });
 
         // Note: page.tsx doesn't use format=json in the URL actually? 
@@ -69,10 +66,10 @@ export async function POST(request: Request) {
         }
 
         // Parse XML using Regex (Mirrors page.tsx logic)
-        // We are looking for structure: <Street>...<Geography>Zip-House#</Geography>...</Street>
+        // We are looking for structure: <Street>...<Geography>Zip-House#</Geography>...<Count>N</Count>...</Street>
         const streetRegex = /<Street>(.*?)<\/Street>/g;
         let match;
-        const foundHouses: number[] = [];
+        const foundHouses: { num: number, count: number, name?: string | null, phone?: string | null, email?: string | null }[] = [];
 
         // We also want to confirm the target house exists
         let targetFound = false;
@@ -81,6 +78,15 @@ export async function POST(request: Request) {
         while ((match = streetRegex.exec(textData)) !== null) {
             const content = match[1];
             const geoMatch = content.match(/<Geography>(.*?)<\/Geography>/);
+            const countMatch = content.match(/<Count>(.*?)<\/Count>/);
+            const nameMatch = content.match(/<Name>(.*?)<\/Name>/);
+            const phoneMatch = content.match(/<Phone>(.*?)<\/Phone>/);
+            const emailMatch = content.match(/<Email>(.*?)<\/Email>/);
+
+            const count = countMatch ? parseInt(countMatch[1], 10) : 0;
+            const name = nameMatch ? nameMatch[1] : null;
+            const phone = phoneMatch ? phoneMatch[1] : null;
+            const email = emailMatch ? emailMatch[1] : null;
 
             if (geoMatch) {
                 const fullGeo = geoMatch[1]; // e.g., "90210-6114"
@@ -90,7 +96,7 @@ export async function POST(request: Request) {
                 const num = parseInt(numPart.replace(/\D/g, ''), 10);
 
                 if (!isNaN(num)) {
-                    foundHouses.push(num);
+                    foundHouses.push({ num, count, name, phone, email });
 
                     // Check if this is our target
                     if (num === parseInt(houseNumber, 10)) {
@@ -122,10 +128,16 @@ export async function POST(request: Request) {
 
         // Filter out the target itself and sort by distance to target
         const neighbors = foundHouses
-            .filter(n => n !== baseNum)
-            .sort((a, b) => Math.abs(a - baseNum) - Math.abs(b - baseNum))
+            .filter(n => n.num !== baseNum)
+            .sort((a, b) => Math.abs(a.num - baseNum) - Math.abs(b.num - baseNum))
             .slice(0, 20) // Return top 20 closest neighbors
-            .map(n => `${n} ${street}`);
+            .map(n => ({
+                address: `${n.num} ${street}`,
+                count: n.count,
+                name: n.name,
+                phone: n.phone,
+                email: n.email
+            }));
 
         return NextResponse.json({
             validatedAddress: `${houseNumber} ${street}`, // Best effort from input

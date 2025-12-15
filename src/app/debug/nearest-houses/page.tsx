@@ -12,6 +12,8 @@ export default function NearestHousesDebug() {
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [result, setResult] = useState<any>(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [selectedNeighbor, setSelectedNeighbor] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -146,14 +148,97 @@ export default function NearestHousesDebug() {
                             <p className="text-slate-500 italic">No neighbors found in immediate range.</p>
                         ) : (
                             <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                {result.neighbors.map((addr: string, i: number) => (
-                                    <li key={i} className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-slate-700 dark:text-slate-200 font-mono text-sm shadow-sm flex items-center">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 mr-2"></span>
-                                        {addr}
+                                {result.neighbors.map((n: { address: string, count: number, name?: string, phone?: string, email?: string }, i: number) => (
+                                    <li key={i}>
+                                        <button
+                                            onClick={() => setSelectedNeighbor(n)}
+                                            className="w-full text-left px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-slate-700 dark:text-slate-200 font-mono text-sm shadow-sm flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                                        >
+                                            <div className="flex items-center">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-green-400 mr-2"></span>
+                                                {n.address}
+                                            </div>
+                                            <span className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-500 dark:text-slate-400">
+                                                {n.count} {n.count === 1 ? 'person' : 'people'}
+                                            </span>
+                                        </button>
                                     </li>
                                 ))}
                             </ul>
                         )}
+                    </div>
+                </div>
+            )
+            }
+            {selectedNeighbor && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                    onClick={() => setSelectedNeighbor(null)}
+                >
+                    <div
+                        className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="bg-slate-50 dark:bg-slate-950 p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-start">
+                            <div>
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">Household Details</h3>
+                                <p className="text-slate-500 font-mono text-sm mt-1">{selectedNeighbor.address}</p>
+                            </div>
+                            <button onClick={() => setSelectedNeighbor(null)} className="text-slate-400 hover:text-slate-600">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6 space-y-6">
+                            {/* Stats */}
+                            <div className="flex gap-4">
+                                <div className="flex-1 bg-blue-50 dark:bg-slate-800 p-4 rounded-lg border border-blue-100 dark:border-slate-700">
+                                    <div className="text-xs uppercase text-slate-500 mb-1 font-bold">Residents</div>
+                                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{selectedNeighbor.count}</div>
+                                </div>
+                                <div className="flex-1 bg-green-50 dark:bg-slate-800 p-4 rounded-lg border border-green-100 dark:border-slate-700">
+                                    <div className="text-xs uppercase text-slate-500 mb-1 font-bold">Status</div>
+                                    <div className="text-lg font-bold text-green-600 dark:text-green-400">Occupied</div>
+                                </div>
+                            </div>
+
+                            {/* Contact Info Placeholder */}
+                            <div className="space-y-3">
+                                <h4 className="font-bold text-slate-900 dark:text-slate-100 border-b pb-2">Contact Information</h4>
+
+                                <div className="grid grid-cols-3 gap-y-4 text-sm">
+                                    <div className="text-slate-500">Name</div>
+                                    <div className="col-span-2 font-medium text-slate-900 dark:text-slate-200">
+                                        {selectedNeighbor.name || "--"}
+                                    </div>
+
+                                    <div className="text-slate-500">Phone</div>
+                                    <div className="col-span-2 font-medium text-slate-900 dark:text-slate-200">
+                                        {selectedNeighbor.phone || "--"}
+                                    </div>
+
+                                    <div className="text-slate-500">Email</div>
+                                    <div className="col-span-2 font-medium text-slate-900 dark:text-slate-200">
+                                        {selectedNeighbor.email || "--"}
+                                    </div>
+                                </div>
+                                <p className="text-xs text-slate-400 italic mt-4 text-center">
+                                    * Full contact details require a specific household query.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                            <button
+                                onClick={() => setSelectedNeighbor(null)}
+                                className="px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 transition-colors font-medium text-sm"
+                            >
+                                Close
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
