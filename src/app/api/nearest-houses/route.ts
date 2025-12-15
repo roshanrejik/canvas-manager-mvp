@@ -147,8 +147,9 @@ export async function POST(request: Request) {
 
     } catch (error: unknown) {
         console.error("Fallback Handler Error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
         return NextResponse.json(
-            { error: "Internal Server Error" },
+            { error: `Internal Server Error: ${errorMessage}` },
             { status: 500 }
         );
     }
