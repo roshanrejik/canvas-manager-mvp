@@ -8,7 +8,7 @@ interface Household {
   geography: string;
   count: string;
   zip: string;
-  // Optional fields for detailed view
+  // Detailed view fields
   name?: string;
   spouse?: string;
   phone?: string;
@@ -17,6 +17,10 @@ interface Household {
   email?: string;
   lastResults?: string;
   notes?: string;
+  // Canvassing fields
+  canvassingResult?: 'Flyer' | '1:1 meeting IRT' | 'RNT' | '';
+  productsNeeded?: string[]; // Array of selected products
+  appointmentDate?: string;
 }
 
 export default function Home() {
@@ -24,6 +28,7 @@ export default function Home() {
   const [houseNumber, setHouseNumber] = useState('');
   const [street, setStreet] = useState('Sunset');
   const [zip, setZip] = useState('90210');
+  const [maxRecords, setMaxRecords] = useState('10');
 
   const [rawData, setRawData] = useState<string | null>(null);
   const [households, setHouseholds] = useState<Household[]>([]);
@@ -32,7 +37,36 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async (id: string, hno: string, searchStreet: string, searchZip: string) => {
+  // Form state for editing
+  const [editForm, setEditForm] = useState<Household | null>(null);
+
+  // When a household is selected, initialize the edit form
+  useEffect(() => {
+    if (selectedHousehold) {
+      setEditForm({ ...selectedHousehold, productsNeeded: selectedHousehold.productsNeeded || [] });
+    } else {
+      setEditForm(null);
+    }
+  }, [selectedHousehold]);
+
+  const handleSave = () => {
+    if (!editForm) return;
+
+    // Update the main list with the edited data
+    setHouseholds(prev => prev.map(h => h.id === editForm.id ? editForm : h));
+    setSelectedHousehold(null); // Close modal
+  };
+
+  const toggleProduct = (product: string) => {
+    if (!editForm) return;
+    const current = editForm.productsNeeded || [];
+    const updated = current.includes(product)
+      ? current.filter(p => p !== product)
+      : [...current, product];
+    setEditForm({ ...editForm, productsNeeded: updated });
+  };
+
+  const fetchData = async (id: string, hno: string, searchStreet: string, searchZip: string, records: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -42,7 +76,11 @@ export default function Home() {
       params.append('id', id);
       params.append('zip', searchZip);
       if (searchStreet) params.append('street', searchStreet);
+
+      // Re-enable hno and add records param for nearest search
       if (hno) params.append('hno', hno);
+      if (records) params.append('records', records);
+
       params.append('format', 'json');
 
       const apiUrl = `https://list.melissadata.net/v1/Consumer/rest/Service.svc/get/zip?${params.toString()}`;
@@ -72,21 +110,51 @@ export default function Home() {
         const cntMatch = content.match(/<Count>(.*?)<\/Count>/);
         const zipMatch = content.match(/<Zip>(.*?)<\/Zip>/);
 
-        // Mock data for demonstration purposes (since API count endpoint lacks PI)
-        const hasData = Math.random() > 0.5;
-
         householdList.push({
           id: Math.random().toString(36).substr(2, 9), // Generate a temp ID for React key
           geography: geoMatch ? geoMatch[1] : 'Unknown Location',
           count: cntMatch ? cntMatch[1] : '0',
           zip: zipMatch ? zipMatch[1] : searchZip,
-          // Mock fields
-          name: hasData ? 'Yeau Liao' : undefined,
-          mobile1: hasData ? '248-528-1777' : undefined,
-          lastResults: hasData ? '26 May 2016' : undefined,
-          spouse: undefined, // Placeholder as per screenshot
-          phone: undefined // Placeholder as per screenshot
+          // Initialize fields as empty/undefined so user sees blanks
+          name: undefined,
+          mobile1: undefined,
+          lastResults: undefined,
+          spouse: undefined,
+          phone: undefined,
+          mobile2: undefined,
+          email: undefined,
+          notes: undefined,
+          canvassingResult: '',
+          productsNeeded: [],
+          appointmentDate: ''
         });
+      }
+
+      // Sort by proximity if a house number was searched
+      // Even with the API returning 'closest' records, sorting them locally is good for display
+      if (hno && hno.trim() !== '') {
+        const targetNum = parseInt(hno.replace(/\D/g, ''), 10);
+        if (!isNaN(targetNum)) {
+          householdList.sort((a, b) => {
+            // Extract house number from geography (assuming format "Zip-HouseNumber" or just "HouseNumber" somewhere)
+            // Based on example "90210-6114", the house number is the suffix after the dash.
+            // Or sometimes it might be just the number. Let's try to parse the last numeric segment.
+
+            const getNum = (geo: string) => {
+              const parts = geo.split('-');
+              const lastPart = parts[parts.length - 1];
+              return parseInt(lastPart.replace(/\D/g, ''), 10) || 0;
+            };
+
+            const numA = getNum(a.geography);
+            const numB = getNum(b.geography);
+
+            const distA = Math.abs(numA - targetNum);
+            const distB = Math.abs(numB - targetNum);
+
+            return distA - distB;
+          });
+        }
       }
 
       setHouseholds(householdList);
@@ -101,7 +169,7 @@ export default function Home() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (customerId.trim() && zip.trim()) {
-      fetchData(customerId.trim(), houseNumber.trim(), street.trim(), zip.trim());
+      fetchData(customerId.trim(), houseNumber.trim(), street.trim(), zip.trim(), maxRecords.trim());
     }
   };
 
@@ -126,7 +194,7 @@ export default function Home() {
 
         {/* Search Bar */}
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-8">
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Customer ID</label>
               <input type="text" value={customerId} onChange={e => setCustomerId(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
@@ -138,6 +206,10 @@ export default function Home() {
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Street</label>
               <input type="text" value={street} onChange={e => setStreet(e.target.value)} placeholder="e.g. Sunset" className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Max Records</label>
+              <input type="number" value={maxRecords} onChange={e => setMaxRecords(e.target.value)} placeholder="10" className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Zip Code</label>
@@ -206,89 +278,140 @@ export default function Home() {
 
       </div>
 
-      {/* Popup Modal */}
-      {selectedHousehold && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedHousehold(null)}>
+      {/* Popup Form Modal */}
+      {selectedHousehold && editForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm shadow-sm" onClick={() => setSelectedHousehold(null)}>
           <div
-            className="bg-white dark:bg-slate-950 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200 font-sans"
+            className="bg-white dark:bg-slate-950 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200 font-sans flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            {/* Header / Top Bar */}
-            <div className="h-2 bg-yellow-500 w-full"></div>
-
-            {/* List Content */}
-            <div className="flex flex-col">
-
-              {/* Name Row */}
-              <div className="flex border-b border-slate-100 dark:border-slate-800 p-4">
-                <div className="w-1/3 text-slate-900 dark:text-slate-100 font-medium">Name</div>
-                <div className={`w-2/3 ${selectedHousehold.name ? 'text-blue-700 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                  {selectedHousehold.name || 'Name'}
-                </div>
+            {/* Header */}
+            <div className="bg-slate-50 dark:bg-slate-900 p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-start sticky top-0 z-10">
+              <div>
+                <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Household Details</h3>
+                <p className="text-slate-500 text-sm mt-1 font-mono">{editForm.geography} • {editForm.zip}</p>
               </div>
-
-              {/* Spouse Row */}
-              <div className="flex border-b border-slate-100 dark:border-slate-800 p-4">
-                <div className="w-1/3 text-slate-900 dark:text-slate-100 font-medium">Spouse</div>
-                <div className={`w-2/3 ${selectedHousehold.spouse ? 'text-blue-700 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                  {selectedHousehold.spouse || 'Spouse'}
-                </div>
-              </div>
-
-              {/* Phone Row */}
-              <div className="flex border-b border-slate-100 dark:border-slate-800 p-4">
-                <div className="w-1/3 text-slate-900 dark:text-slate-100 font-medium">Phone</div>
-                <div className={`w-2/3 ${selectedHousehold.phone ? 'text-blue-700 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                  {selectedHousehold.phone || 'Home Phone'}
-                </div>
-              </div>
-
-              {/* Mobile #1 Row */}
-              <div className="flex border-b border-slate-100 dark:border-slate-800 p-4">
-                <div className="w-1/3 text-slate-900 dark:text-slate-100 font-medium whitespace-nowrap">Mobile #1</div>
-                <div className={`w-2/3 ${selectedHousehold.mobile1 ? 'text-blue-700 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                  {selectedHousehold.mobile1 || 'Mobile #1'}
-                </div>
-              </div>
-
-              {/* Mobile #2 Row */}
-              <div className="flex border-b border-slate-100 dark:border-slate-800 p-4">
-                <div className="w-1/3 text-slate-900 dark:text-slate-100 font-medium whitespace-nowrap">Mobile #2</div>
-                <div className={`w-2/3 ${selectedHousehold.mobile2 ? 'text-blue-700 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                  {selectedHousehold.mobile2 || 'Mobile #2'}
-                </div>
-              </div>
-
-              {/* Email Row */}
-              <div className="flex border-b border-slate-100 dark:border-slate-800 p-4">
-                <div className="w-1/3 text-slate-900 dark:text-slate-100 font-medium">Email</div>
-                <div className={`w-2/3 ${selectedHousehold.email ? 'text-blue-700 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                  {selectedHousehold.email || 'Email'}
-                </div>
-              </div>
-
-              {/* Last Results Row */}
-              <div className="flex border-b border-slate-100 dark:border-slate-800 p-4">
-                <div className="w-1/3 text-slate-900 dark:text-slate-100 font-medium whitespace-nowrap">Last Results</div>
-                <div className={`w-2/3 ${selectedHousehold.lastResults ? 'text-blue-700 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                  {selectedHousehold.lastResults || 'Date'}
-                </div>
-              </div>
-
-              {/* Notes Row */}
-              <div className="flex p-4">
-                <div className="w-1/3 text-slate-900 dark:text-slate-100 font-medium">Notes</div>
-                <div className="w-2/3 text-slate-300 dark:text-slate-600 italic">
-                  Write here
-                </div>
-              </div>
-
+              <button onClick={() => setSelectedHousehold(null)} className="text-slate-400 hover:text-slate-600">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
 
-            {/* Footer / Close (Optional, usually clicking outside closes, but keeping a subtle close for usability if needed) */}
-            {/* <div className="bg-slate-50 dark:bg-slate-900 p-2 text-center border-t border-slate-100 dark:border-slate-800">
-                <button onClick={() => setSelectedHousehold(null)} className="text-sm text-slate-500 hover:text-slate-700">Close</button>
-            </div> */}
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Left Column: Contact Info */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-slate-900 dark:text-slate-100 border-b border-slate-100 pb-2 mb-4">Contact Information</h4>
+
+                <div className="space-y-3">
+                  {(
+                    [
+                      { label: 'Name', field: 'name', placeholder: 'Enter Name' },
+                      { label: 'Spouse', field: 'spouse', placeholder: 'Spouse Name' },
+                      { label: 'Home Phone', field: 'phone', placeholder: 'Home Phone' },
+                      { label: 'Mobile #1', field: 'mobile1', placeholder: 'Mobile Number' },
+                      { label: 'Mobile #2', field: 'mobile2', placeholder: 'Alt Mobile' },
+                      { label: 'Email', field: 'email', placeholder: 'Email Address' },
+                    ] as const
+                  ).map((input) => (
+                    <div key={input.field} className="group">
+                      <label className="block text-xs font-medium text-slate-500 mb-1 group-focus-within:text-blue-600 transition-colors">{input.label}</label>
+                      <input
+                        type="text"
+                        value={(editForm[input.field as keyof Household] as string) || ''}
+                        onChange={(e) => setEditForm({ ...editForm, [input.field]: e.target.value })}
+                        placeholder={input.placeholder}
+                        className="w-full text-sm py-1.5 border-b border-slate-200 dark:border-slate-800 bg-transparent focus:border-blue-500 focus:outline-none transition-colors text-slate-900 dark:text-slate-100 placeholder:text-slate-300"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right Column: Canvassing Info */}
+              <div className="space-y-6">
+                <h4 className="font-semibold text-slate-900 dark:text-slate-100 border-b border-slate-100 pb-2 mb-4">Canvassing Outcome</h4>
+
+                {/* Result Dropdown */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Canvassing Result</label>
+                  <select
+                    value={editForm.canvassingResult}
+                    onChange={(e) => setEditForm({ ...editForm, canvassingResult: e.target.value as Household['canvassingResult'] })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="">Select Result...</option>
+                    <option value="Flyer">Flyer</option>
+                    <option value="1:1 meeting IRT">1:1 meeting IRT</option>
+                    <option value="RNT">RNT</option>
+                  </select>
+                </div>
+
+                {/* Products Multi-select */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Products Needed</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {['Roofing', 'Door', 'Window', 'Flooring'].map(product => (
+                      <button
+                        key={product}
+                        onClick={() => toggleProduct(product)}
+                        className={`px-3 py-2 rounded-lg text-sm border transition-all text-left flex items-center gap-2
+                                        ${(editForm.productsNeeded || []).includes(product)
+                            ? 'bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'
+                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400'}
+                                    `}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center
+                                        ${(editForm.productsNeeded || []).includes(product) ? 'bg-blue-500 border-blue-500' : 'border-slate-300'}
+                                    `}>
+                          {(editForm.productsNeeded || []).includes(product) && (
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                          )}
+                        </div>
+                        {product}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Appointment Date */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Appointment Date</label>
+                  <input
+                    type="date"
+                    value={editForm.appointmentDate || ''}
+                    onChange={(e) => setEditForm({ ...editForm, appointmentDate: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Notes</label>
+                  <textarea
+                    value={editForm.notes || ''}
+                    onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                    placeholder="Add notes about the visit..."
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Sticky/Fixed Footer actions */}
+            <div className="p-6 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 sticky bottom-0">
+              <button
+                onClick={() => setSelectedHousehold(null)}
+                className="px-6 py-2.5 rounded-lg font-medium text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className="px-8 py-2.5 rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all transform active:scale-95"
+              >
+                Save Changes
+              </button>
+            </div>
           </div>
         </div>
       )}
