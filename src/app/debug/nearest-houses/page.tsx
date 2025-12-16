@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import useGooglePlacesAutocomplete from '../../../components/hooks/useGooglePlacesAutocomplete';
 
 export default function NearestHousesDebug() {
     const [formData, setFormData] = useState({
@@ -10,6 +11,10 @@ export default function NearestHousesDebug() {
         state: '',
         zip: ''
     });
+
+    const [sortOrder, setSortOrder] = useState<string>('all'); // all, asc, desc
+    const [filterType, setFilterType] = useState<string>('all'); // all, odd, even
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [result, setResult] = useState<any>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,12 +22,43 @@ export default function NearestHousesDebug() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFormData(prev => ({
-            ...prev,
-            [e.target.name]: e.target.value
-        }));
+    const handlePlaceSelect = (place: any) => {
+        if (!place || !place.address_components) return;
+
+        const componentForm = {
+            street_number: 'short_name',
+            route: 'long_name',
+            locality: 'long_name',
+            administrative_area_level_1: 'short_name',
+            postal_code: 'short_name'
+        };
+
+        const newFormData = {
+            houseNumber: '',
+            street: '',
+            city: '',
+            state: '',
+            zip: ''
+        };
+
+        // Iterate through address components and map them
+        for (const component of place.address_components) {
+            const addressType = component.types[0];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if ((componentForm as any)[addressType]) {
+                const val = component[(componentForm as any)[addressType]];
+                if (addressType === 'street_number') newFormData.houseNumber = val;
+                if (addressType === 'route') newFormData.street = val;
+                if (addressType === 'locality') newFormData.city = val;
+                if (addressType === 'administrative_area_level_1') newFormData.state = val;
+                if (addressType === 'postal_code') newFormData.zip = val;
+            }
+        }
+
+        setFormData(newFormData);
     };
+
+    const addressInputRef = useGooglePlacesAutocomplete(handlePlaceSelect);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -36,7 +72,11 @@ export default function NearestHousesDebug() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(formData),
+                body: JSON.stringify({
+                    ...formData,
+                    sortOrder,
+                    filterType
+                }),
             });
 
             const data = await res.json();
@@ -90,9 +130,9 @@ export default function NearestHousesDebug() {
                 <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
                     <div>
                         <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-                            Nearest Houses
+                            Canvas Manager
                         </h1>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm">Consumer Lookup Debugger</p>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm">Consumer Lookup</p>
                     </div>
                 </div>
 
@@ -102,61 +142,52 @@ export default function NearestHousesDebug() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* Address Block */}
                             <div className="space-y-4">
-                                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800 pb-2">Address Details</h3>
-                                <div className="grid grid-cols-4 gap-4">
-                                    <div className="col-span-1">
-                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Number</label>
-                                        <input
-                                            name="houseNumber"
-                                            value={formData.houseNumber}
-                                            onChange={handleChange}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                            required
-                                        />
-                                    </div>
-                                    <div className="col-span-3">
-                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Street</label>
-                                        <input
-                                            name="street"
-                                            value={formData.street}
-                                            onChange={handleChange}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                            required
-                                        />
-                                    </div>
+                                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800 pb-2">Search Address</h3>
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Enter Address</label>
+                                    <input
+                                        ref={addressInputRef}
+                                        type="text"
+                                        placeholder="Start typing address..."
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                        required={!formData.houseNumber}
+                                    />
                                 </div>
+                                {/* Read Only Display of Parsed Data */}
+                                {formData.houseNumber && (
+                                    <div className="text-xs text-slate-500">
+                                        Selected: {formData.houseNumber} {formData.street}, {formData.city}
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Region Block */}
+                            {/* Filters Block */}
                             <div className="space-y-4">
-                                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800 pb-2">Region</h3>
-                                <div className="grid grid-cols-3 gap-4">
+                                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800 pb-2">Filter & Sort</h3>
+                                <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">City</label>
-                                        <input
-                                            name="city"
-                                            value={formData.city}
-                                            onChange={handleChange}
+                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Sort</label>
+                                        <select
+                                            value={sortOrder}
+                                            onChange={(e) => setSortOrder(e.target.value)}
                                             className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                        />
+                                        >
+                                            <option value="all">Default (Distance)</option>
+                                            <option value="asc">Ascending</option>
+                                            <option value="desc">Descending</option>
+                                        </select>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">State</label>
-                                        <input
-                                            name="state"
-                                            value={formData.state}
-                                            onChange={handleChange}
+                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Filter</label>
+                                        <select
+                                            value={filterType}
+                                            onChange={(e) => setFilterType(e.target.value)}
                                             className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Zip</label>
-                                        <input
-                                            name="zip"
-                                            value={formData.zip}
-                                            onChange={handleChange}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                        />
+                                        >
+                                            <option value="all">All</option>
+                                            <option value="odd">Odd</option>
+                                            <option value="even">Even</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -165,7 +196,7 @@ export default function NearestHousesDebug() {
                         <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
                             <button
                                 type="submit"
-                                disabled={loading}
+                                disabled={loading || !formData.houseNumber}
                                 className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium shadow-sm transition-all"
                             >
                                 {loading ? 'Searching...' : 'Find Neighbors'}
@@ -206,10 +237,10 @@ export default function NearestHousesDebug() {
                         <div className="lg:col-span-3">
                             <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
                                 <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2">
-                                    Neighbors
+                                    Home List
                                 </h2>
                                 {result.neighbors.length === 0 ? (
-                                    <p className="text-slate-500 italic text-center py-8">No neighbors found in immediate range.</p>
+                                    <p className="text-slate-500 italic text-center py-8">No neighbors found with selected criteria.</p>
                                 ) : (
                                     <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                         {result.neighbors.map((n: { address: string, count: number, name?: string, phone?: string, email?: string }, i: number) => (
